@@ -6,22 +6,20 @@ from label_image import predict_with_confidence
 
 app = Flask(__name__)
 
-# Load Haar Cascade
+# Load haar cascade
 face_cascade = cv2.CascadeClassifier(
     "haarcascade_frontalface_default.xml"
 )
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Emotion Recognition API running ✅"
+    return "Emotion Detection Server Running ✅"
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    # ✅ Ensure multipart/form-data
+    # ✅ Accept ONLY multipart/form-data with image
     if "image" not in request.files:
-        return jsonify(
-            {"error": "Unsupported Media Type or no image received"}
-        ), 415
+        return jsonify({"error": "No image file received"}), 415
 
     file = request.files["image"]
 
