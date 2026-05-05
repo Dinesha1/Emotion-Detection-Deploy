@@ -1,62 +1,63 @@
 from flask import Flask, request, jsonify
-from label_image import predict_with_confidence
-import requests
-import uuid
+import cv2
+import numpy as np
 import os
+from label_image import predict_with_confidence
 
 app = Flask(__name__)
 
-UPLOAD_DIR = "api_images"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Load Haar Cascade
+face_cascade = cv2.CascadeClassifier(
+    "haarcascade_frontalface_default.xml"
+)
 
-# ✅ Health check (Railway needs this)
 @app.route("/", methods=["GET"])
 def home():
-    return "Emotion Recognition API is running ✅"
+    return "Emotion Recognition API running ✅"
 
-# ✅ Emotion prediction from IMAGE URL
 @app.route("/predict", methods=["POST"])
-def predict_api():
-    data = request.get_json()
+def predict():
+    # ✅ Ensure multipart/form-data
+    if "image" not in request.files:
+        return jsonify(
+            {"error": "Unsupported Media Type or no image received"}
+        ), 415
 
-    if not data or "image_url" not in data:
-        return jsonify({"error": "image_url is required"}), 400
+    file = request.files["image"]
 
-    image_url = data["image_url"]
+    image_bytes = np.frombuffer(file.read(), np.uint8)
+    img = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
 
-    try:
-        # ✅ Browser-like header to avoid 403
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
+    if img is None:
+        return jsonify({"error": "Invalid image"}), 400
 
-        r = requests.get(image_url, headers=headers, timeout=10)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        if r.status_code != 200:
-            return jsonify({"error": "Failed to download image"}), 400
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.2,
+        minNeighbors=5,
+        minSize=(80, 80)
+    )
 
-        filename = f"{uuid.uuid4().hex}.jpg"
-        image_path = os.path.join(UPLOAD_DIR, filename)
-
-        with open(image_path, "wb") as f:
-            f.write(r.content)
-
-        emotion, confidence = predict_with_confidence(image_path)
-
+    if len(faces) == 0:
         return jsonify({
-            "status": "success",
-            "emotion": emotion,
-            "confidence": round(confidence, 3)
+            "emotion": "No face detected",
+            "confidence": 0.0
         })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+    face = img[y:y+h, x:x+w]
 
-    finally:
-        if os.path.exists(image_path):
-            os.remove(image_path)
+    cv2.imwrite("face.jpg", face)
 
-# ✅ Railway PORT handling
+    emotion, confidence = predict_with_confidence("face.jpg")
+
+    return jsonify({
+        "emotion": emotion,
+        "confidence": round(float(confidence), 3)
+    })
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
