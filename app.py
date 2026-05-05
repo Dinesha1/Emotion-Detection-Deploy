@@ -6,7 +6,11 @@ from label_image import predict_with_confidence
 
 app = Flask(__name__)
 
-# Load haar cascade
+# ✅ IMPORTANT: allow multipart uploads
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["UPLOAD_EXTENSIONS"] = [".jpg", ".jpeg", ".png"]
+
+# Load Haar Cascade
 face_cascade = cv2.CascadeClassifier(
     "haarcascade_frontalface_default.xml"
 )
@@ -17,12 +21,13 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    # ✅ Accept ONLY multipart/form-data with image
+    # ✅ multipart/form-data check
     if "image" not in request.files:
         return jsonify({"error": "No image file received"}), 415
 
     file = request.files["image"]
 
+    # ✅ read image safely
     image_bytes = np.frombuffer(file.read(), np.uint8)
     img = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
 
